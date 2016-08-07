@@ -1,9 +1,8 @@
 // Stocks daily price update
 
 // Usage: go run orca.go [stock_A,stock_B,stock_C, ...]
-//						 [price_A,price_B,price_C, ...]
-//						 [update time]
-//						 [debug]
+//			 [price_A,price_B,price_C, ...]
+//			 [update time]
 
 // TODO: Handle case when user has multiple shares of the same symbol -
 //			1st buy: MSFT at $37 for 1000 stocks
