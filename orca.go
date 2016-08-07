@@ -135,7 +135,7 @@ func main() {
 
 	gocron.Clear()
 	gocron.Every(1).Day().At(update_time).Do(fetchAndSendUpdate)
-	gocron.Start()
+	<-gocron.Start()
 }
 
 // Fetch updated stocks and send email.
