@@ -1,6 +1,6 @@
-symbol,price,amount
-aapl,91.20,500
-aapl,85.64,600
-aapl,120,100
-msft,50.43,1000
-cmg,380.1,100
+symbol,price,amount,isThaiStock
+aapl,91.20,500,false
+aapl,85.64,600,false
+cpall,46.2,1000,true
+msft,50.43,1000,false
+cmg,380.1,100,false
