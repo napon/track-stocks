@@ -1,18 +1,18 @@
 // Stocks daily price update
-
-// Usage: go run orca.go [stock_A,stock_B,stock_C, ...]
-//			 [price_A,price_B,price_C, ...]
-//			 [update time]
-
-// TODO: Handle case when user has multiple shares of the same symbol -
-//			1st buy: MSFT at $37 for 1000 stocks
-//			2nd buy: MSFT at $50 for  300 stocks
+// Usage: go run orca.go [csv_file]
+//			 [update_time]
+//
+// update_time := format HH:mm
+// csv_file := [symbol,price,amount]
+// see sample_input.csv for more info
 
 // TODO: Support Thailand stocks
+// TODO: Support ErrorMessage handling from API call
 
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -33,8 +33,18 @@ const USER_EMAIL = "___EMAIL___"
 const QUOTE_BASE_URL = "http://dev.markitondemand.com/MODApis/Api/v2/Quote/json?symbol="
 const DEBUG = false
 
-var user_stocks map[string]float64
+var user_stocks []UserStock
 var update_time string
+
+type UserStock struct {
+	Symbol string
+	Shares []Share
+}
+
+type Share struct {
+	Price  float64
+	Amount int
+}
 
 type Quote struct {
 	Status           string
@@ -56,7 +66,7 @@ type Quote struct {
 }
 
 // DEBUG: Print message to console.
-func debugMessage(message string) {
+func debugMessage(message ...interface{}) {
 	if DEBUG {
 		fmt.Println(message)
 	}
@@ -71,36 +81,61 @@ func checkError(e error) {
 }
 
 // Parse input data into user_stocks.
-func populateUserStocks(input_stocks string, input_prices string) {
-	debugMessage(fmt.Sprint("\npopulateUserStocks args: ", input_stocks, " ,", input_prices))
+func populateUserStocks(csv_file string) {
+	debugMessage("populateUserStocks csv: ", csv_file)
 
-	stocks := strings.Split(input_stocks, ",")
-	prices := strings.Split(input_prices, ",")
+	file, err := os.Open(csv_file)
+	checkError(err)
 
-	for i := range stocks {
-		var err error
-		user_stocks[stocks[i]], err = strconv.ParseFloat(prices[i], 64)
-		checkError(err)
+	r := csv.NewReader(file)
+	records, err := r.ReadAll()
+	checkError(err)
+
+	debugMessage(records)
+
+	i := 1
+	var currentSymbol string
+	var currentShares []Share
+	for i < len(records) {
+		record := records[i]
+		if i == 1 {
+			currentSymbol = record[0]
+		}
+
+		if currentSymbol == record[0] {
+			price, err := strconv.ParseFloat(record[1], 64)
+			checkError(err)
+			amount, err := strconv.Atoi(record[2])
+			checkError(err)
+			currentShares = append(currentShares, Share{price, amount})
+			i += 1
+		} else {
+			user_stocks = append(user_stocks, UserStock{currentSymbol, currentShares})
+
+			// Clear data for a new stock.
+			currentSymbol = record[0]
+			currentShares = make([]Share, 0)
+		}
 	}
 
-	for k, v := range user_stocks {
-		debugMessage(fmt.Sprint("key: ", k, " val: ", v))
-	}
+	// Add last stock item.
+	user_stocks = append(user_stocks, UserStock{currentSymbol, currentShares})
+	debugMessage(user_stocks)
 }
 
 func main() {
-	if len(os.Args) < 4 {
-		fmt.Printf("Usage: ./orca [stocks] [prices] [update_time]\n")
+	if len(os.Args) < 3 {
+		fmt.Printf("Usage: ./orca [csv_file] [update_time]\n")
 		os.Exit(1)
 	}
 
-	user_stocks = make(map[string]float64)
-	populateUserStocks(os.Args[1], os.Args[2])
-	update_time = os.Args[3]
+	user_stocks = make([]UserStock, 0)
+	populateUserStocks(os.Args[1])
+	update_time = os.Args[2]
 
 	gocron.Clear()
 	gocron.Every(1).Day().At(update_time).Do(fetchAndSendUpdate)
-	<-gocron.Start()
+	gocron.Start()
 }
 
 // Fetch updated stocks and send email.
@@ -131,13 +166,15 @@ func getUserStockPriceResult() string {
 	returnInvestment := 0.0
 	result := "Stocks Update " + time.Now().Format("Tue Jan 12") + "\n"
 	result += "-----------------------------\n"
-	result += fmt.Sprintf("%-*s %-*s %-*s\n", 10, "Symbol", 15, "P.Price", 15, "M.Price")
-	for symbol, uPrice := range user_stocks {
-		quote := fetchQuoteForStock(symbol)
+	result += fmt.Sprintf("%-*s %-*s\n", 10, "Symbol", 15, "M.Price")
+	for _, stock := range user_stocks {
+		quote := fetchQuoteForStock(stock.Symbol)
 		price := quote.LastPrice
-		result += fmt.Sprintf("%-*s %-*.2f %-*.2f\n", 10, strings.ToUpper(symbol), 15, uPrice, 15, price)
-		investment += uPrice
-		returnInvestment += price
+		result += fmt.Sprintf("%-*s %-*.2f\n", 10, strings.ToUpper(stock.Symbol), 15, price)
+		for _, share := range stock.Shares {
+			investment += share.Price * float64(share.Amount)
+			returnInvestment += price * float64(share.Amount)
+		}
 	}
 	result += "-----------------------------\n"
 	result += "Total amount invested: " + fmt.Sprintf("%.2f\n", investment)
