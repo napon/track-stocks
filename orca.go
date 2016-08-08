@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/jasonlvhit/gocron"
+	"github.com/leekchan/accounting"
 	"github.com/mailgun/mailgun-go"
 )
 
@@ -134,7 +135,7 @@ func populateUserStocks(csv_file string) {
 // Fetch updated stocks and send email.
 func fetchAndSendUpdate() {
 	update := getUserStockPriceResult()
-	debugMessage("\n\nOutput result:", update)
+	debugMessage("\n\nOutput result:\n", update)
 
 	if DEBUG {
 		return
@@ -161,8 +162,10 @@ func fetchAndSendUpdate() {
 
 // Return a well formatted result of current market prices.
 func getUserStockPriceResult() string {
-	investment := 0.0
-	returnInvestment := 0.0
+	investmentUSD := 0.0
+	investmentTHB := 0.0
+	returnInvestmentUSD := 0.0
+	returnInvestmentTHB := 0.0
 	result := "Stocks Update - " + time.Now().Format("Mon Jan 2") + "\n"
 	result += "-----------------------------\n"
 	result += fmt.Sprintf("%-*s %-*s\n", 10, "Symbol", 15, "M.Price")
@@ -172,15 +175,35 @@ func getUserStockPriceResult() string {
 		price := quotes[symbol].LastPrice
 		result += fmt.Sprintf("%-*s %-*.2f\n", 10, symbol, 15, price)
 		for _, share := range stock.Shares {
-			investment += share.Price * float64(share.Amount)
-			returnInvestment += price * float64(share.Amount)
+			if stock.IsThai {
+				investmentTHB += share.Price * float64(share.Amount)
+				returnInvestmentTHB += price * float64(share.Amount)
+			} else {
+				investmentUSD += share.Price * float64(share.Amount)
+				returnInvestmentUSD += price * float64(share.Amount)
+			}
 		}
 	}
 
-	result += "-----------------------------\n"
-	result += "Total amount invested: " + fmt.Sprintf("%.2f\n", investment)
-	result += "Current amount: " + fmt.Sprintf("%.2f\n", returnInvestment)
-	result += "Gain/Loss = " + fmt.Sprintf("%.2f\n", returnInvestment-investment)
+	if investmentUSD > 0.0 {
+		ac := accounting.Accounting{Symbol: "$", Precision: 2}
+		result += "-----------------------------\n"
+		result += "USD Summary\n"
+		result += "Total amount invested: " + ac.FormatMoney(investmentUSD) + "\n"
+		result += "Current investments: " + ac.FormatMoney(returnInvestmentUSD) + "\n"
+		result += "Gain/Loss = " + ac.FormatMoney(returnInvestmentUSD-investmentUSD) + "\n"
+	}
+
+	if investmentTHB > 0.0 {
+		ac := accounting.Accounting{Symbol: "฿", Precision: 2}
+		result += "-----------------------------\n"
+		result += "THB Summary\n"
+		result += "Total amount invested: " + ac.FormatMoney(investmentTHB) + "\n"
+		result += "Current investments: " + ac.FormatMoney(returnInvestmentTHB) + "\n"
+		result += "Gain/Loss = " + ac.FormatMoney(returnInvestmentTHB-investmentTHB) + "\n"
+	}
+
+	result += "-----------------------------"
 	return result
 }
 
